@@ -6,48 +6,60 @@ use std::{
 use anyhow::{Context, Result};
 use fancy_regex::Regex;
 use log::error;
+use once_cell::sync::Lazy;
 use reqwest::Url;
 
-lazy_static! {
-  static ref BSHORT_REGEX: Regex =
-    Regex::new(r"((https?://|(?<![a-zA-Z]{1})|^)?b23.tv/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*").unwrap();
-  static ref BVIDEO_REGEX: Regex = Regex::new(
-    r"(?P<url>(https?://|(?<![a-zA-Z]{1})|^)(www\.)?bilibili.com/video/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*"
-  )
-  .unwrap();
-  static ref BARTICLE_REGEX: Regex = Regex::new(
-    r"(https?://|(?<![a-zA-Z]{1})|^)(www\.)?bilibili.com/read/mobile/(?P<cvid>[0-9]+)\??(?:&?[^=&]*=[^=&]*)*"
-  )
-  .unwrap();
-  static ref AMAZON_REGEX: Regex = Regex::new(
-    r"(?P<domain>(https?://|(?<![a-zA-Z]{1})|^)(www\.)?amazon\.(com|co(\.[a-zA-Z]+)?)/)[a-zA-Z0-9%-]+/(?P<path>dp/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*"
-  ).unwrap();
-  static ref AMAZON_SEARCH_REGEX: Regex = Regex::new(
-    r"(?P<domain>(https?://|(?<![a-zA-Z]{1})|^)(www\.)?amazon\.(com|co(\.[a-zA-Z]+)?)/s)(?P<keyword>\?k=[a-zA-Z0-9%+-]+)(?:&?[^=&]*=[^=&]*)*"
-  )
-  .unwrap();
-  static ref TWITTER_REGEX: Regex = Regex::new(
-    r"(https?://|(?<![a-zA-Z]{1})|^)(www|c\.)?(vx)?twitter\.com(?P<path>/[a-zA-Z0-9_]+/status/[0-9]+)\??(?:&?[^=&]*=[^=&]*)*"
-  )
-  .unwrap();
-  static ref WEIXIN_REGEX: Regex = Regex::new(
-    r"(https?://|(?<![a-zA-Z]{1})|^)mp\.weixin\.qq\.com/s\??(?:&?[^=&]*=[^=&]*)*"
-  )
-  .unwrap();
-  static ref JD_REGEX: Regex = Regex::new(
-    r"(?P<url>(https?://|(?<![a-zA-Z]{1})|^)item\.(m\.)?jd\.com/product/[0-9]+\.html)\??(?:&?[^=&]*=[^=&]*)*"
-  )
-  .unwrap();
-  static ref XIAOHONGSHU_REGEX: Regex = Regex::new(
-    r"((https?://|(?<![a-zA-Z]{1})|^)xhslink.com/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*"
-  ).unwrap();
-  static ref TWITTER_SHORT_REGEX: Regex = Regex::new(
-    r"((https?://|(?<![a-zA-Z]{1})|^)t\.co/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*"
-  ).unwrap();
-  static ref TIKTOK_SHARE_REGEX: Regex = Regex::new(
-    r"((https?://|(?<![a-zA-Z]{1})|^)(vm|vt|www)\.tiktok\.com/(t/)?[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*"
-  ).unwrap();
-}
+const BSHORT_REGEX: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(r"((https?://|(?<![a-zA-Z]{1})|^)?b23.tv/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*")
+    .unwrap()
+});
+
+const BVIDEO_REGEX: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(r"(?P<url>(https?://|(?<![a-zA-Z]{1})|^)(www\.)?bilibili.com/video/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*").unwrap()
+});
+
+const BARTICLE_REGEX: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(r"(https?://|(?<![a-zA-Z]{1})|^)(www\.)?bilibili.com/read/mobile/(?P<cvid>[0-9]+)\??(?:&?[^=&]*=[^=&]*)*").unwrap()
+});
+const AMAZON_REGEX: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(
+  r"(?P<domain>(https?://|(?<![a-zA-Z]{1})|^)(www\.)?amazon\.(com|co(\.[a-zA-Z]+)?)/)[a-zA-Z0-9%-]+/(?P<path>dp/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*"
+  ).unwrap()
+});
+const AMAZON_SEARCH_REGEX: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(
+  r"(?P<domain>(https?://|(?<![a-zA-Z]{1})|^)(www\.)?amazon\.(com|co(\.[a-zA-Z]+)?)/s)(?P<keyword>\?k=[a-zA-Z0-9%+-]+)(?:&?[^=&]*=[^=&]*)*"
+)
+.unwrap()
+});
+const TWITTER_REGEX: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(
+  r"(https?://|(?<![a-zA-Z]{1})|^)(www|c\.)?(vx)?twitter\.com(?P<path>/[a-zA-Z0-9_]+/status/[0-9]+)\??(?:&?[^=&]*=[^=&]*)*"
+)
+.unwrap()
+});
+const WEIXIN_REGEX: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(r"(https?://|(?<![a-zA-Z]{1})|^)mp\.weixin\.qq\.com/s\??(?:&?[^=&]*=[^=&]*)*").unwrap()
+});
+const JD_REGEX: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(
+  r"(?P<url>(https?://|(?<![a-zA-Z]{1})|^)item\.(m\.)?jd\.com/product/[0-9]+\.html)\??(?:&?[^=&]*=[^=&]*)*"
+)
+.unwrap()
+});
+const XIAOHONGSHU_REGEX: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(r"((https?://|(?<![a-zA-Z]{1})|^)xhslink.com/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*")
+    .unwrap()
+});
+const TWITTER_SHORT_REGEX: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(r"((https?://|(?<![a-zA-Z]{1})|^)t\.co/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*")
+    .unwrap()
+});
+const TIKTOK_SHARE_REGEX: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(
+  r"((https?://|(?<![a-zA-Z]{1})|^)(vm|vt|www)\.tiktok\.com/(t/)?[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*"
+).unwrap()
+});
 
 pub async fn replace_all(text: &str) -> Result<String> {
   let mut new = text.to_string();

@@ -1,13 +1,10 @@
-#[macro_use]
-extern crate lazy_static;
-
 mod event;
 mod replacer;
 
 use async_stream::stream;
 use futures::pin_mut;
 use futures_util::stream::StreamExt;
-use log::{debug, error, info, LevelFilter, trace};
+use log::{debug, error, info, trace, LevelFilter};
 use log4rs::{
   append::console::ConsoleAppender,
   config::{Appender, Root},
@@ -23,7 +20,7 @@ use std::{
   process,
   sync::{
     atomic::{AtomicU32, Ordering},
-    Arc,
+    Arc, OnceLock,
   },
   time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -71,21 +68,23 @@ impl Default for Time {
   }
 }
 
-lazy_static! {
-  static ref START_TIME: u64 = {
+const START_TIME: OnceLock<u64> = OnceLock::new();
+
+fn start_time() -> u64 {
+  *START_TIME.get_or_init(|| {
     let start = SystemTime::now();
     let since_the_epoch = start
-        .duration_since(UNIX_EPOCH)
-        .expect("Time went backwards");
+      .duration_since(UNIX_EPOCH)
+      .expect("Time went backwards");
     since_the_epoch.as_secs()
-  };
+  })
 }
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
   let args = Cli::parse();
   init_logger(args.verbose.log_level_filter());
-  info!("Start at: {:?}", *START_TIME);
+  info!("Start at: {:?}", start_time());
   debug!("{args:?}");
   let config = init_config(args.config_file).context("Failed to init config file")?;
   let config = Arc::new(config);

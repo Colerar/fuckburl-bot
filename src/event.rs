@@ -7,7 +7,7 @@ use frankenstein::{
 };
 use log::{debug, info};
 
-use crate::{replacer::replace_all, Config, START_TIME};
+use crate::{replacer::replace_all, start_time, Config};
 use std::fmt::Write;
 
 fn write_user(text: &mut String, user: &User) {
@@ -34,7 +34,7 @@ pub(crate) async fn process_update(
   debug!("Processing update: {}", &update.update_id);
   match update.content {
     UpdateContent::Message(msg) => {
-      if msg.date < *START_TIME {
+      if msg.date < start_time() {
         return Ok(());
       }
       if !config.enabled_chats.contains(&msg.chat.id.to_string()) {

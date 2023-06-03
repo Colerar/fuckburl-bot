@@ -14,8 +14,8 @@ opt-level = "s"
 
 [dependencies]
 anyhow = "1.0"
-lazy_static = "1.4"
 v_htmlescape = "0.15.8"
+once_cell = "1.17"
 
 form_urlencoded = "1.1"
 regex = "1"
@@ -51,6 +51,6 @@ features = ["all_components", "pattern_encoder"]
 
 # Telegram API
 [dependencies.frankenstein]
-version = "0.24.1"
+version = "0.25"
 default-features = false
 features = ["async-http-client"]

@@ -377,9 +377,9 @@ dependencies = [
 
 [[package]]
 name = "frankenstein"
-version = "0.24.1"
+version = "0.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb62ef4c77f8dfaf164dfd3d5e2c2e61ad0270527fff64c08e873775ff866786"
+checksum = "38df1ab4d3c5c67f6bf903fbd0f891972aebc9032274e67b835ed26910fdd9c5"
 dependencies = [
  "async-trait",
  "reqwest",
@@ -403,9 +403,9 @@ dependencies = [
  "frankenstein",
  "futures",
  "futures-util",
- "lazy_static",
  "log",
  "log4rs",
+ "once_cell",
  "regex",
  "reqwest",
  "serde",
@@ -824,9 +824,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.15.0"
+version = "1.17.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e82dad04139b71a90c080c8463fe0dc7902db5192d939bd0950f074d014339e1"
+checksum = "9670a07f94779e00908f3e686eab508878ebb390ba6e604d3a284c00e8d0487b"
 
 [[package]]
 name = "openssl-probe"
