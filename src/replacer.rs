@@ -41,7 +41,7 @@ const TWITTER_REGEX: Lazy<Regex> = Lazy::new(|| {
 
 const TWITTER_X_REGEX: Lazy<Regex> = Lazy::new(|| {
   Regex::new(
-  r"(https?://|(?<![a-zA-Z]{1})|^)(www|c\.)?(vx)?twitter\.com(?P<path>/[a-zA-Z0-9_]+/status/[0-9]+)\??(?:&?[^=&]*=[^=&]*)*"
+  r"(https?://|(?<![a-zA-Z]{1})|^)(www\.)?x\.com(?P<path>/[a-zA-Z0-9_]+/status/[0-9]+)\??(?:&?[^=&]*=[^=&]*)*"
 )
 .unwrap()
 });
