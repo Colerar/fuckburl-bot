@@ -2,8 +2,8 @@ use std::{fmt::Display, sync::Arc};
 
 use anyhow::{Context, Ok, Result};
 use frankenstein::{
-  AsyncApi, AsyncTelegramApi, DeleteMessageParams, ParseMode, SendMessageParams, Update,
-  UpdateContent, User,
+  AsyncApi, AsyncTelegramApi, DeleteMessageParams, MessageOrigin, ParseMode, ReplyParameters,
+  SendMessageParams, Update, UpdateContent, User,
 };
 use log::{debug, info};
 
@@ -32,111 +32,94 @@ pub(crate) async fn process_update(
   update: Update,
 ) -> Result<()> {
   debug!("Processing update: {}", &update.update_id);
-  match update.content {
-    UpdateContent::Message(msg) => {
-      if msg.date < start_time() {
-        return Ok(());
-      }
-      if !config.enabled_chats.contains(&msg.chat.id.to_string()) {
-        return Ok(());
-      };
+  let UpdateContent::Message(msg) = update.content else {
+    info!("Unsupported message type: {}", MessageType(update.content));
+    return Ok(());
+  };
 
-      let text = if let Some(text) = msg.text.clone() {
-        text
-      } else {
-        return Ok(());
-      };
-      let replaced = replace_all(&text).await.context("Failed to replace text")?;
-      if replaced == text {
-        return Ok(());
-      }
+  if msg.date < start_time() {
+    return Ok(());
+  }
+  if !config.enabled_chats.contains(&msg.chat.id.to_string()) {
+    return Ok(());
+  };
 
-      info!("Replacing message {}", msg.chat.id);
+  let text = if let Some(text) = msg.text.clone() {
+    text
+  } else {
+    return Ok(());
+  };
 
-      let mut text = String::with_capacity(128);
-      write!(text, "Send by ").unwrap();
-      match msg.from {
-        Some(user) => write_user(&mut text, &user),
-        None => {
-          write!(text, "Unknown").unwrap();
-        },
-      }
+  let replaced = replace_all(&text).await.context("Failed to replace text")?;
+  if replaced == text {
+    return Ok(());
+  }
 
-      writeln!(text, ":\n").unwrap();
+  info!("Replacing message {}", msg.chat.id);
 
-      text.push_str(&v_htmlescape::escape(&replaced).to_string());
-
-      if let Some(from) = msg.forward_from {
-        text.push_str("\n\n<i>forwarded from ");
-        write_user(&mut text, &from);
-        text.push_str("</i>");
-      } else if let Some(from_chat) = msg.forward_from_chat {
-        text.push_str("\n\n<i>forwarded from channel ");
-        let title = from_chat
-          .title
-          .map(|title| v_htmlescape::escape(&title).to_string())
-          .unwrap_or_else(|| "unknown".to_string());
-        if let (Some(username), Some(msg_id)) = (from_chat.username, msg.forward_from_message_id) {
-          write!(
-            text,
-            r#"<a href="https://t.me/{username}/{msg_id}">{title}</a>"#,
-          )
-          .unwrap();
-        } else if let Some(msg_id) = msg.forward_from_message_id {
-          debug!("from_chat.id = {}", from_chat.id);
-          let id = -(from_chat.id + 1000000000000);
-          write!(
-            text,
-            r#"<a href="https://t.me/c/{id}/{msg_id}">{title}</a>"#,
-          )
-          .unwrap();
-        } else {
-          text.write_str(&title).unwrap();
-        }
-        text.push_str("</i>");
-      } else if let Some(ref sender_name) = msg.forward_sender_name {
-        text.push_str("\n\n<i>forwarded from channel ");
-        write!(
-          text,
-          ", forwarded from {}",
-          v_htmlescape::escape(sender_name)
-        )
-        .unwrap();
-        text.push_str("</i>");
-      }
-
-      let mut send_msg = SendMessageParams::builder()
-        .chat_id(msg.chat.id)
-        .text(text)
-        .parse_mode(ParseMode::Html)
-        .build();
-
-      send_msg.reply_to_message_id = msg.reply_to_message.map(|i| i.message_id);
-
-      let resp = api
-        .send_message(&send_msg)
-        .await
-        .context("Failed to send message...")?;
-      debug!("{resp:?}");
-
-      let resp = api
-        .delete_message(
-          &DeleteMessageParams::builder()
-            .chat_id(msg.chat.id)
-            .message_id(msg.message_id)
-            .build(),
-        )
-        .await
-        .context("Failed to delete message...")?;
-      debug!("{resp:?}",);
-
-      Ok(())
-    },
-    _ => {
-      info!("Unsupported message type: {}", MessageType(update.content));
-      Ok(())
+  let mut text = String::with_capacity(128);
+  write!(text, "Send by ").unwrap();
+  match msg.from {
+    Some(user) => write_user(&mut text, &user),
+    None => {
+      write!(text, "Unknown").unwrap();
     },
   }
+
+  writeln!(text, ":\n").unwrap();
+
+  text.push_str(&v_htmlescape::escape(&replaced).to_string());
+
+  if let Some(reply_origin) = msg.forward_origin {
+    use MessageOrigin as MO;
+    match *reply_origin {
+      MO::User(user) => {
+        text.push_str("\n\n<i>forwarded from ");
+        write_user(&mut text, &user.sender_user);
+        text.push_str("</i>");
+      },
+      MO::HiddenUser(user) => {
+        text.push_str("\n\n<i>forwarded from ");
+        text.push_str(&v_htmlescape::escape(&user.sender_user_name).to_string());
+        text.push_str("</i>");
+      },
+      MO::Chat(_chat) => {
+        return Ok(());
+      },
+      MO::Channel(_channel) => {
+        return Ok(());
+      },
+    }
+  }
+
+  let mut send_msg = SendMessageParams::builder()
+    .chat_id(msg.chat.id)
+    .text(text)
+    .parse_mode(ParseMode::Html)
+    .build();
+
+  send_msg.reply_parameters = msg
+    .reply_to_message
+    .map(|i| ReplyParameters::builder().message_id(i.message_id).build());
+
+  let resp = api
+    .send_message(&send_msg)
+    .await
+    .context("Failed to send message...")?;
+  debug!("{resp:?}");
+
+  let resp = api
+    .delete_message(
+      &DeleteMessageParams::builder()
+        .chat_id(msg.chat.id)
+        .message_id(msg.message_id)
+        .build(),
+    )
+    .await
+    .context("Failed to delete message...")?;
+  debug!("{resp:?}",);
+
+  Ok(())
 }
 
 struct MessageType(UpdateContent);
@@ -158,6 +141,10 @@ impl Display for MessageType {
       UpdateContent::MyChatMember(_) => "MyChatMember",
       UpdateContent::ChatMember(_) => "ChatMember",
       UpdateContent::ChatJoinRequest(_) => "ChatJoinRequest",
+      UpdateContent::MessageReaction(_) => "MessageReaction",
+      UpdateContent::MessageReactionCount(_) => "MessageReactionCount",
+      UpdateContent::ChatBoost(_) => "ChatBoost",
+      UpdateContent::RemovedChatBoost(_) => "RemovedChatBoost",
     };
     f.write_str(str)
   }

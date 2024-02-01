@@ -38,6 +38,14 @@ const TWITTER_REGEX: Lazy<Regex> = Lazy::new(|| {
 )
 .unwrap()
 });
+
+const TWITTER_X_REGEX: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(
+  r"(https?://|(?<![a-zA-Z]{1})|^)(www|c\.)?(vx)?twitter\.com(?P<path>/[a-zA-Z0-9_]+/status/[0-9]+)\??(?:&?[^=&]*=[^=&]*)*"
+)
+.unwrap()
+});
+
 const WEIXIN_REGEX: Lazy<Regex> = Lazy::new(|| {
   Regex::new(r"(https?://|(?<![a-zA-Z]{1})|^)mp\.weixin\.qq\.com/s\??(?:&?[^=&]*=[^=&]*)*").unwrap()
 });
@@ -78,6 +86,7 @@ pub async fn replace_all(text: &str) -> Result<String> {
   replace_btrack(&mut new);
   new = replace_barticle(&new);
   new = replace_twitter(&new);
+  new = replace_twitter_x(&new);
   new = replace_amazon(&new);
   new = replace_amazon_search(&new);
   new = replace_weixin(&new);
@@ -87,6 +96,12 @@ pub async fn replace_all(text: &str) -> Result<String> {
 
 fn replace_twitter(url: &str) -> String {
   TWITTER_REGEX
+    .replace(url, "https://c.vxtwitter.com$path")
+    .into()
+}
+
+fn replace_twitter_x(url: &str) -> String {
+  TWITTER_X_REGEX
     .replace(url, "https://c.vxtwitter.com$path")
     .into()
 }
@@ -248,7 +263,7 @@ trait RemovePairsIf {
   where
     Self: Sized,
   {
-    self.remove_pairs_if_key(|k| !vec.contains(&k.borrow()));
+    self.remove_pairs_if_key(|k| !vec.contains(&k));
   }
 }
 
