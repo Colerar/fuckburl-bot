@@ -36,7 +36,7 @@ default-features = false
 features = ["rustls-tls-native-roots", "json", "gzip", "deflate", "socks"]
 
 [dependencies.tokio]
-version = "1.29"
+version = "1"
 default-features = false
 features = ["rt", "macros", "parking_lot"]
 
@@ -47,6 +47,7 @@ features = ["all_components", "pattern_encoder"]
 
 # Telegram API
 [dependencies.frankenstein]
-version = "0.30"
+# version = "0.30"
+git = "https://github.com/Colerar/frankenstein.git"
 default-features = false
 features = ["async-http-client"]

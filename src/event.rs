@@ -31,7 +31,6 @@ pub(crate) async fn process_update(
   config: Arc<Config>,
   update: Update,
 ) -> Result<()> {
-  debug!("Processing update: {}", &update.update_id);
   let UpdateContent::Message(msg) = update.content else {
     info!("Unsupported message type: {}", MessageType(update.content));
     return Ok(());
@@ -40,9 +39,16 @@ pub(crate) async fn process_update(
   if msg.date < start_time() {
     return Ok(());
   }
-  if !config.enabled_chats.contains(&msg.chat.id.to_string()) {
+  let contains_id = config.enabled_chats.contains(&msg.chat.id.to_string());
+  let contains_username = msg
+    .chat
+    .username
+    .is_some_and(|usr| config.enabled_chats.contains(&usr));
+  if !contains_id && !contains_username {
     return Ok(());
   };
+
+  debug!("Message id: {}/{}", msg.chat.id, msg.message_id);
 
   let text = if let Some(text) = msg.text.clone() {
     text
@@ -55,7 +61,7 @@ pub(crate) async fn process_update(
     return Ok(());
   }
 
-  info!("Replacing message {}", msg.chat.id);
+  info!("Replacing message {}/{}", msg.chat.id, msg.message_id);
 
   let mut text = String::with_capacity(128);
   write!(text, "Send by ").unwrap();

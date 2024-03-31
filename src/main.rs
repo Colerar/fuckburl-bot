@@ -1,10 +1,7 @@
 mod event;
 mod replacer;
 
-use async_stream::stream;
-use futures::pin_mut;
-use futures_util::stream::StreamExt;
-use log::{debug, error, info, trace, LevelFilter};
+use log::{debug, info, LevelFilter};
 use log4rs::{
   append::console::ConsoleAppender,
   config::{Appender, Root},
@@ -18,10 +15,7 @@ use std::{
   io::{BufReader, BufWriter, Read, Write},
   path::PathBuf,
   process,
-  sync::{
-    atomic::{AtomicU32, Ordering},
-    Arc, OnceLock,
-  },
+  sync::{Arc, OnceLock},
   time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -55,6 +49,7 @@ struct Config {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all(deserialize = "kebab-case"))]
 struct Time {
+  #[allow(dead_code)]
   fetch_delay: u64,
   failed_delay: u64,
 }
@@ -68,7 +63,7 @@ impl Default for Time {
   }
 }
 
-const START_TIME: OnceLock<u64> = OnceLock::new();
+static START_TIME: OnceLock<u64> = OnceLock::new();
 
 fn start_time() -> u64 {
   *START_TIME.get_or_init(|| {
@@ -118,60 +113,39 @@ async fn main() -> Result<()> {
       .context("Failed to get username for bot, maybe token is invalid")?
   );
 
-  let update_seq = AtomicU32::new(0);
+  let update_params_builder = GetUpdatesParams::builder().allowed_updates([AllowedUpdate::Message]);
+  let mut update_params = update_params_builder.clone().build();
 
-  fn update_params(offset: u32) -> GetUpdatesParams {
-    GetUpdatesParams::builder()
-      .allowed_updates(vec![AllowedUpdate::Message])
-      .offset(offset)
-      .limit(500u32)
-      .build()
-  }
+  loop {
+    let result = tg_api.get_updates(&update_params).await;
+    match result {
+      Ok(response) => {
+        if let Some(last) = response.result.last() {
+          update_params = update_params_builder
+            .clone()
+            .offset(last.update_id + 1)
+            .build();
+        }
 
-  let stream = {
-    let tg_api = Arc::clone(&tg_api);
-    let config = Arc::clone(&config);
-    stream! {
-      loop {
-        let result = tg_api.get_updates(&update_params(update_seq.load(Ordering::Acquire))).await;
-        let updates = match result {
-          Ok(msg) => msg.result,
-          Err(err) => {
-            error!(
-              "Failed to get updates, retry after {}ms: {:?}",
-              config.time.failed_delay,
-              err.to_string()
-            );
-            tokio::time::sleep(Duration::from_millis(config.time.failed_delay)).await;
-            continue;
-          },
-        };
-        if let Some(last) = updates.iter().last() {
-          let new_id = last.update_id + 1;
-          update_seq.store(new_id, Ordering::Release);
+        for update in response.result {
+          let api = Arc::clone(&tg_api);
+          let config = Arc::clone(&config);
+          tokio::spawn(async move {
+            let result = process_update(&api, config, update)
+              .await
+              .with_context(|| "Failed to process update".to_string());
+            if let Err(err) = result {
+              log::error!("{err:?}");
+            }
+          });
         }
-        for update in updates.into_iter() {
-          yield update;
-        }
-        trace!("Yield updates..");
-        tokio::time::sleep(Duration::from_millis(config.time.fetch_delay)).await;
-      }
+      },
+      Err(error) => {
+        log::error!("Failed to get updates: {error:?}");
+        tokio::time::sleep(Duration::from_millis(config.time.failed_delay)).await;
+      },
     }
-  };
-
-  pin_mut!(stream);
-
-  while let Some(value) = stream.next().await {
-    let tg_api = Arc::clone(&tg_api);
-    let config = Arc::clone(&config);
-    tokio::spawn(async move {
-      if let Err(err) = process_update(&tg_api, config, value).await {
-        error!("Error during processing update: {err}")
-      };
-    });
   }
-
-  Ok(())
 }
 
 #[cfg(debug_assertions)]
