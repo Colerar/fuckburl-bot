@@ -7,10 +7,30 @@ use anyhow::{Context, Result};
 use fancy_regex::Regex;
 use log::error;
 use once_cell::sync::Lazy;
-use reqwest::{Client, Url};
+use reqwest::{redirect, Client, Url};
 
-static CLIENT: Lazy<Client> = Lazy::new(|| {
-  reqwest::ClientBuilder::new().user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36").build().expect("Unable to build reqwest client")
+const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36";
+
+// static CLIENT: Lazy<Client> = Lazy::new(|| {
+//   reqwest::ClientBuilder::new()
+//     .user_agent(UA)
+//     .build()
+//     .expect("Unable to build reqwest client")
+// });
+
+static CLIENT_REDIRECT_ONCE: Lazy<Client> = Lazy::new(|| {
+  let once_redirect = redirect::Policy::custom(|attempt| {
+    if attempt.previous().len() > 1 {
+      attempt.stop()
+    } else {
+      attempt.follow()
+    }
+  });
+  reqwest::ClientBuilder::new()
+    .user_agent(UA)
+    .redirect(once_redirect)
+    .build()
+    .expect("Unable to build reqwest client")
 });
 
 static BSHORT_REGEX: Lazy<Regex> = Lazy::new(|| {
@@ -262,7 +282,7 @@ fn replace_barticle(str: &str) -> String {
 }
 
 async fn get_redirect_url(url: &str) -> Result<Url> {
-  let resp = CLIENT
+  let resp = CLIENT_REDIRECT_ONCE
     .get(url)
     .send()
     .await
