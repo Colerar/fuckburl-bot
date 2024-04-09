@@ -47,7 +47,6 @@ features = ["all_components", "pattern_encoder"]
 
 # Telegram API
 [dependencies.frankenstein]
-# version = "0.30"
-git = "https://github.com/Colerar/frankenstein.git"
+version = "0.30"
 default-features = false
 features = ["async-http-client"]

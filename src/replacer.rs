@@ -7,7 +7,11 @@ use anyhow::{Context, Result};
 use fancy_regex::Regex;
 use log::error;
 use once_cell::sync::Lazy;
-use reqwest::Url;
+use reqwest::{Client, Url};
+
+static CLIENT: Lazy<Client> = Lazy::new(|| {
+  reqwest::ClientBuilder::new().user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36").build().expect("Unable to build reqwest client")
+});
 
 static BSHORT_REGEX: Lazy<Regex> = Lazy::new(|| {
   Regex::new(r"((https?://|(?<![a-zA-Z]{1})|^)?b23.tv/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*")
@@ -59,6 +63,8 @@ static XIAOHONGSHU_REGEX: Lazy<Regex> = Lazy::new(|| {
   Regex::new(r"((https?://|(?<![a-zA-Z]{1})|^)xhslink.com/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*")
     .unwrap()
 });
+static XIAOHONGSHU_REGEX2: Lazy<Regex> =
+  Lazy::new(|| Regex::new(r"😆 [0-9A-Za-z]{8,20} 😆").unwrap());
 static TWITTER_SHORT_REGEX: Lazy<Regex> = Lazy::new(|| {
   Regex::new(r"((https?://|(?<![a-zA-Z]{1})|^)t\.co/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*")
     .unwrap()
@@ -201,6 +207,16 @@ async fn replace_xiaohongshu(str: &str) -> Result<String> {
     url.set_query(None);
     new_str.replace_range(x.range(), url.to_string().as_str());
   }
+  if new_str.contains("www.xiaohongshu.com") {
+    if let Cow::Owned(replaced) = XIAOHONGSHU_REGEX2.replace(&new_str, "") {
+      new_str = replaced;
+    }
+    new_str = new_str.replace(
+      "，复制本条信息，打开【小红书】App查看精彩内容！",
+      " ，复制本条信息，打开【小红书】App查看精彩内容！",
+    );
+  }
+
   Ok(new_str)
 }
 
@@ -246,7 +262,9 @@ fn replace_barticle(str: &str) -> String {
 }
 
 async fn get_redirect_url(url: &str) -> Result<Url> {
-  let resp = reqwest::get(url)
+  let resp = CLIENT
+    .get(url)
+    .send()
     .await
     .with_context(|| format!("Failed to get url {url}"))?;
   Ok(resp.url().clone())
@@ -381,10 +399,10 @@ mod tests {
 
   #[tokio::test]
   async fn replace_xiaohongshu_test() {
-    let text = "http://xhslink.com/8yMk6p".to_string();
+    let text = "4 1XXXX发布了一篇小红书笔记，快来看吧！ 😆 xxxxxxxxxxx 😆 http://xhslink.com/8yMk6p，复制本条信息，打开【小红书】App查看精彩内容！".to_string();
     let result = replace_xiaohongshu(&text).await.unwrap();
     assert_eq!(
-      "https://www.xiaohongshu.com/explore/6460b865000000000703a98b",
+      "4 1XXXX发布了一篇小红书笔记，快来看吧！  https://www.xiaohongshu.com/discovery/item/6460b865000000000703a98b ，复制本条信息，打开【小红书】App查看精彩内容！",
       result
     )
   }
