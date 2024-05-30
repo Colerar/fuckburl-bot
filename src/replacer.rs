@@ -34,64 +34,70 @@ static CLIENT_REDIRECT_ONCE: Lazy<Client> = Lazy::new(|| {
 });
 
 static BSHORT_REGEX: Lazy<Regex> = Lazy::new(|| {
-  Regex::new(r"((https?://|(?<![a-zA-Z]{1})|^)?b23.tv/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*")
+  Regex::new(r"((https?://|(?<![a-zA-Z])|^)?b23\.tv/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*")
     .unwrap()
 });
 
 static BVIDEO_REGEX: Lazy<Regex> = Lazy::new(|| {
-  Regex::new(r"(?P<url>(https?://|(?<![a-zA-Z]{1})|^)(www\.)?bilibili.com/video/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*").unwrap()
+  Regex::new(r"(?P<url>(https?://|(?<![a-zA-Z])|^)(www\.)?bilibili\.com/video/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*").unwrap()
 });
 
+static YOUTUBE_REGEX: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(r"(https?://|(?<![a-zA-Z])|^)(www\.)?(youtube\.com|youtu\.be)/(watch|[a-zA-Z_]+)?\??(?:&?[^=&]*=[^=&]*)*").unwrap()
+});
 static BARTICLE_REGEX: Lazy<Regex> = Lazy::new(|| {
-  Regex::new(r"(https?://|(?<![a-zA-Z]{1})|^)(www\.)?bilibili.com/read/mobile/(?P<cvid>[0-9]+)\??(?:&?[^=&]*=[^=&]*)*").unwrap()
+  Regex::new(r"(https?://|(?<![a-zA-Z])|^)(www\.)?bilibili\.com/read/mobile/(?P<cvid>[0-9]+)\??(?:&?[^=&]*=[^=&]*)*").unwrap()
+});
+static BOPUS_REGEX: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(r"(https?://|(?<![a-zA-Z])|^)((www|m)\.)?bilibili\.com/opus/(?P<opus_id>[0-9]+)\??(?:&?[^=&]*=[^=&]*)*").unwrap()
 });
 static AMAZON_REGEX: Lazy<Regex> = Lazy::new(|| {
   Regex::new(
-  r"(?P<domain>(https?://|(?<![a-zA-Z]{1})|^)(www\.)?amazon\.(com|co(\.[a-zA-Z]+)?)/)[a-zA-Z0-9%-]+/(?P<path>dp/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*"
+  r"(?P<domain>(https?://|(?<![a-zA-Z])|^)(www\.)?amazon\.(com|co(\.[a-zA-Z]+)?)/)[a-zA-Z0-9%-]+/(?P<path>dp/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*"
   ).unwrap()
 });
 static AMAZON_SEARCH_REGEX: Lazy<Regex> = Lazy::new(|| {
   Regex::new(
-  r"(?P<domain>(https?://|(?<![a-zA-Z]{1})|^)(www\.)?amazon\.(com|co(\.[a-zA-Z]+)?)/s)(?P<keyword>\?k=[a-zA-Z0-9%+-]+)(?:&?[^=&]*=[^=&]*)*"
+  r"(?P<domain>(https?://|(?<![a-zA-Z])|^)(www\.)?amazon\.(com|co(\.[a-zA-Z]+)?)/s)(?P<keyword>\?k=[a-zA-Z0-9%+-]+)(?:&?[^=&]*=[^=&]*)*"
 )
 .unwrap()
 });
 static TWITTER_REGEX: Lazy<Regex> = Lazy::new(|| {
   Regex::new(
-  r"(https?://|(?<![a-zA-Z]{1})|^)(www|c\.)?(vx)?twitter\.com(?P<path>/[a-zA-Z0-9_]+/status/[0-9]+)\??(?:&?[^=&]*=[^=&]*)*"
+  r"(https?://|(?<![a-zA-Z])|^)(www|c\.)?(vx)?twitter\.com(?P<path>/[a-zA-Z0-9_]+/status/[0-9]+)\??(?:&?[^=&]*=[^=&]*)*"
 )
 .unwrap()
 });
 
 static TWITTER_X_REGEX: Lazy<Regex> = Lazy::new(|| {
   Regex::new(
-  r"(https?://|(?<![a-zA-Z]{1})|^)(www\.)?x\.com(?P<path>/[a-zA-Z0-9_]+/status/[0-9]+)\??(?:&?[^=&]*=[^=&]*)*"
+  r"(https?://|(?<![a-zA-Z])|^)(www\.)?x\.com(?P<path>/[a-zA-Z0-9_]+/status/[0-9]+)\??(?:&?[^=&]*=[^=&]*)*"
 )
 .unwrap()
 });
 
 static WEIXIN_REGEX: Lazy<Regex> = Lazy::new(|| {
-  Regex::new(r"(https?://|(?<![a-zA-Z]{1})|^)mp\.weixin\.qq\.com/s\??(?:&?[^=&]*=[^=&]*)*").unwrap()
+  Regex::new(r"(https?://|(?<![a-zA-Z])|^)mp\.weixin\.qq\.com/s\??(?:&?[^=&]*=[^=&]*)*").unwrap()
 });
 static JD_REGEX: Lazy<Regex> = Lazy::new(|| {
   Regex::new(
-  r"(?P<url>(https?://|(?<![a-zA-Z]{1})|^)item\.(m\.)?jd\.com/product/[0-9]+\.html)\??(?:&?[^=&]*=[^=&]*)*"
+  r"(?P<url>(https?://|(?<![a-zA-Z])|^)item\.(m\.)?jd\.com/product/[0-9]+\.html)\??(?:&?[^=&]*=[^=&]*)*"
 )
 .unwrap()
 });
 static XIAOHONGSHU_REGEX: Lazy<Regex> = Lazy::new(|| {
-  Regex::new(r"((https?://|(?<![a-zA-Z]{1})|^)xhslink.com/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*")
+  Regex::new(r"((https?://|(?<![a-zA-Z])|^)xhslink.com/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*")
     .unwrap()
 });
 static XIAOHONGSHU_REGEX2: Lazy<Regex> =
   Lazy::new(|| Regex::new(r"😆 [0-9A-Za-z]{8,20} 😆").unwrap());
 static TWITTER_SHORT_REGEX: Lazy<Regex> = Lazy::new(|| {
-  Regex::new(r"((https?://|(?<![a-zA-Z]{1})|^)t\.co/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*")
+  Regex::new(r"((https?://|(?<![a-zA-Z])|^)t\.co/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*")
     .unwrap()
 });
 static TIKTOK_SHARE_REGEX: Lazy<Regex> = Lazy::new(|| {
   Regex::new(
-  r"((https?://|(?<![a-zA-Z]{1})|^)(vm|vt|www)\.tiktok\.com/(t/)?[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*"
+  r"((https?://|(?<![a-zA-Z])|^)(vm|vt|www)\.tiktok\.com/(t/)?[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*"
 ).unwrap()
 });
 
@@ -109,8 +115,10 @@ pub async fn replace_all(text: &str) -> Result<String> {
   new = replace_tiktok_share(&new)
     .await
     .context("Failed to replace tiktok share url")?;
+  replace_youtube(&mut new);
   replace_btrack(&mut new);
   new = replace_barticle(&new);
+  new = replace_bopus(&new);
   new = replace_twitter(&new);
   new = replace_twitter_x(&new);
   new = replace_amazon(&new);
@@ -166,6 +174,32 @@ fn replace_amazon_search(url: &str) -> String {
   AMAZON_SEARCH_REGEX
     .replace_all(url, "$domain$keyword")
     .into()
+}
+
+fn trim_youtube_link(url: &mut Url) {
+  const KEYS: Cow<[&str]> = Cow::Borrowed(&["list", "index", "t"]);
+  url.keep_pairs_only_in(KEYS);
+}
+
+fn replace_youtube(text: &mut String) {
+  let mut replaces = Vec::new();
+  for i in YOUTUBE_REGEX.find_iter(text) {
+    let i = match i {
+      Ok(i) => i,
+      Err(err) => {
+        error!("Failed to find_iter: {err}");
+        continue;
+      },
+    };
+    let Ok(mut url) = Url::from_str(i.as_str()) else {
+      continue;
+    };
+    trim_youtube_link(&mut url);
+    replaces.push((i.range(), url.to_string()));
+  }
+  for (range, str) in replaces {
+    text.replace_range(range, str.as_str());
+  }
 }
 
 fn trim_bili_link(url: &mut Url) {
@@ -278,6 +312,12 @@ async fn replace_tiktok_share(str: &str) -> Result<String> {
 fn replace_barticle(str: &str) -> String {
   BARTICLE_REGEX
     .replace_all(str, "https://www.bilibili.com/read/cv$cvid")
+    .into()
+}
+
+fn replace_bopus(str: &str) -> String {
+  BOPUS_REGEX
+    .replace_all(str, "https://t.bilibili.com/$opus_id")
     .into()
 }
 
