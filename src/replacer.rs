@@ -43,7 +43,7 @@ static BVIDEO_REGEX: Lazy<Regex> = Lazy::new(|| {
 });
 
 static YOUTUBE_REGEX: Lazy<Regex> = Lazy::new(|| {
-  Regex::new(r"(https?://|(?<![a-zA-Z])|^)(www\.)?(youtube\.com|youtu\.be)/(watch|[a-zA-Z_]+)?\??(?:&?[^=&]*=[^=&]*)*").unwrap()
+  Regex::new(r"(https?://|(?<![a-zA-Z])|^)(www\.)?(youtube\.com|youtu\.be)/(watch|[a-zA-Z_]+)\??(?:&?[^=&]*=[^=&]*)*").unwrap()
 });
 static BARTICLE_REGEX: Lazy<Regex> = Lazy::new(|| {
   Regex::new(r"(https?://|(?<![a-zA-Z])|^)(www\.)?bilibili\.com/read/mobile/(?P<cvid>[0-9]+)\??(?:&?[^=&]*=[^=&]*)*").unwrap()
@@ -106,9 +106,9 @@ pub async fn replace_all(text: &str) -> Result<String> {
   new = replace_bshort(&new)
     .await
     .context("Failed to replace short url")?;
-  new = replace_xiaohongshu(&new)
-    .await
-    .context("Failed to replace xiaohongshu url")?;
+  // new = replace_xiaohongshu(&new)
+  //   .await
+  //   .context("Failed to replace xiaohongshu url")?;
   new = replace_twitter_short(&new)
     .await
     .context("Failed to replace twitter short url")?;
@@ -177,7 +177,7 @@ fn replace_amazon_search(url: &str) -> String {
 }
 
 fn trim_youtube_link(url: &mut Url) {
-  const KEYS: Cow<[&str]> = Cow::Borrowed(&["list", "index", "t"]);
+  const KEYS: Cow<[&str]> = Cow::Borrowed(&["v", "list", "index", "t"]);
   url.keep_pairs_only_in(KEYS);
 }
 
