@@ -7,7 +7,7 @@ use log4rs::{
   config::{Appender, Root},
   encode::pattern::PatternEncoder,
 };
-use reqwest::{Client, Proxy};
+use frankenstein::reqwest::{Client, Proxy};
 use serde::Deserialize;
 
 use std::{

@@ -7,16 +7,9 @@ use anyhow::{Context, Result};
 use fancy_regex::Regex;
 use log::error;
 use once_cell::sync::Lazy;
-use reqwest::{redirect, Client, Url};
+use frankenstein::reqwest::{redirect, Client, ClientBuilder, Url};
 
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36";
-
-// static CLIENT: Lazy<Client> = Lazy::new(|| {
-//   reqwest::ClientBuilder::new()
-//     .user_agent(UA)
-//     .build()
-//     .expect("Unable to build reqwest client")
-// });
 
 static CLIENT_REDIRECT_ONCE: Lazy<Client> = Lazy::new(|| {
   let once_redirect = redirect::Policy::custom(|attempt| {
@@ -26,7 +19,7 @@ static CLIENT_REDIRECT_ONCE: Lazy<Client> = Lazy::new(|| {
       attempt.follow()
     }
   });
-  reqwest::ClientBuilder::new()
+  ClientBuilder::new()
     .user_agent(UA)
     .redirect(once_redirect)
     .build()
@@ -71,7 +64,7 @@ static TWITTER_REGEX: Lazy<Regex> = Lazy::new(|| {
 
 static TWITTER_X_REGEX: Lazy<Regex> = Lazy::new(|| {
   Regex::new(
-  r"(https?://|(?<![a-zA-Z])|^)(www\.)?x\.com(?P<path>/[a-zA-Z0-9_]+/status/[0-9]+)\??(?:&?[^=&]*=[^=&]*)*"
+  r"(https?://|(?<![a-zA-Z])|^)(www\.)?(fixup)?x\.com(?P<path>/[a-zA-Z0-9_]+/status/[0-9]+)\??(?:&?[^=&]*=[^=&]*)*"
 )
 .unwrap()
 });
@@ -85,12 +78,6 @@ static JD_REGEX: Lazy<Regex> = Lazy::new(|| {
 )
 .unwrap()
 });
-static XIAOHONGSHU_REGEX: Lazy<Regex> = Lazy::new(|| {
-  Regex::new(r"((https?://|(?<![a-zA-Z])|^)xhslink.com/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*")
-    .unwrap()
-});
-static XIAOHONGSHU_REGEX2: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"😆 [0-9A-Za-z]{8,20} 😆").unwrap());
 static TWITTER_SHORT_REGEX: Lazy<Regex> = Lazy::new(|| {
   Regex::new(r"((https?://|(?<![a-zA-Z])|^)t\.co/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*")
     .unwrap()
@@ -106,9 +93,6 @@ pub async fn replace_all(text: &str) -> Result<String> {
   new = replace_bshort(&new)
     .await
     .context("Failed to replace short url")?;
-  // new = replace_xiaohongshu(&new)
-  //   .await
-  //   .context("Failed to replace xiaohongshu url")?;
   new = replace_twitter_short(&new)
     .await
     .context("Failed to replace twitter short url")?;
@@ -130,13 +114,13 @@ pub async fn replace_all(text: &str) -> Result<String> {
 
 fn replace_twitter(url: &str) -> String {
   TWITTER_REGEX
-    .replace(url, "https://c.vxtwitter.com$path")
+    .replace(url, "https://fixupx.com$path")
     .into()
 }
 
 fn replace_twitter_x(url: &str) -> String {
   TWITTER_X_REGEX
-    .replace(url, "https://c.vxtwitter.com$path")
+    .replace(url, "https://fixupx.com$path")
     .into()
 }
 
@@ -246,33 +230,6 @@ async fn replace_bshort(str: &str) -> Result<String> {
   Ok(new_str)
 }
 
-async fn replace_xiaohongshu(str: &str) -> Result<String> {
-  let mut new_str = str.to_string();
-  let matches: Vec<_> = XIAOHONGSHU_REGEX.find_iter(str).collect();
-  for x in matches.iter() {
-    let x = match x {
-      Ok(x) => x,
-      Err(err) => {
-        error!("Failed to find_iter: {err}");
-        continue;
-      },
-    };
-    let mut url = get_redirect_url(x.as_str()).await?;
-    url.set_query(None);
-    new_str.replace_range(x.range(), url.to_string().as_str());
-  }
-  if new_str.contains("www.xiaohongshu.com") {
-    if let Cow::Owned(replaced) = XIAOHONGSHU_REGEX2.replace(&new_str, "") {
-      new_str = replaced;
-    }
-    new_str = new_str.replace(
-      "，复制本条信息，打开【小红书】App查看精彩内容！",
-      " ，复制本条信息，打开【小红书】App查看精彩内容！",
-    );
-  }
-
-  Ok(new_str)
-}
 
 async fn replace_twitter_short(str: &str) -> Result<String> {
   let mut new_str = str.to_string();
@@ -433,7 +390,7 @@ mod tests {
     assert_eq!(
       "https://c.vxtwitter.com/Penny_0571/status/1587323246506528769",
       replace_twitter(
-        "https://twitter.com/Penny_0571/status/1587323246506528769?s=20&t=0Mzx3uLKTD-kygDQmaXvFq"
+        "https://fixupx.com/Penny_0571/status/1587323246506528769?s=20&t=0Mzx3uLKTD-kygDQmaXvFq"
       )
     )
   }
@@ -458,20 +415,10 @@ mod tests {
   }
 
   #[tokio::test]
-  async fn replace_xiaohongshu_test() {
-    let text = "4 1XXXX发布了一篇小红书笔记，快来看吧！ 😆 xxxxxxxxxxx 😆 http://xhslink.com/8yMk6p，复制本条信息，打开【小红书】App查看精彩内容！".to_string();
-    let result = replace_xiaohongshu(&text).await.unwrap();
-    assert_eq!(
-      "4 1XXXX发布了一篇小红书笔记，快来看吧！  https://www.xiaohongshu.com/discovery/item/6460b865000000000703a98b ，复制本条信息，打开【小红书】App查看精彩内容！",
-      result
-    )
-  }
-
-  #[tokio::test]
   async fn replace_twitter_short_test() {
     let text = "https://t.co/jqpeEFD8Nz".to_string();
     let result = replace_twitter_short(&text).await.unwrap();
-    assert_eq!("https://yazawazi.moe/", result)
+    assert_eq!("https://sdl.moe/", result)
   }
 
   #[tokio::test]

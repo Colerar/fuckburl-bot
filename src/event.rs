@@ -56,6 +56,10 @@ pub(crate) async fn process_update(
     return Ok(());
   };
 
+  if text.contains("@ignoreme") {
+    return Ok(());
+  }
+
   let replaced = replace_all(&text).await.context("Failed to replace text")?;
   if replaced == text {
     return Ok(());
@@ -151,6 +155,10 @@ impl Display for MessageType {
       UpdateContent::MessageReactionCount(_) => "MessageReactionCount",
       UpdateContent::ChatBoost(_) => "ChatBoost",
       UpdateContent::RemovedChatBoost(_) => "RemovedChatBoost",
+      UpdateContent::BusinessConnection(_) => "BusinessConnection",
+      UpdateContent::BusinessMessage(_) => "BusinessMessage",
+      UpdateContent::EditedBusinessMessage(_) => "EditedBusinessMessage",
+      UpdateContent::DeletedBusinessMessages(_) => "DeletedBusinessMessages",
     };
     f.write_str(str)
   }

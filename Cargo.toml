@@ -30,11 +30,6 @@ toml = "0.8"
 url = "2.4"
 v_htmlescape = "0.15.8"
 
-[dependencies.reqwest]
-version = "0.11"
-default-features = false
-features = ["rustls-tls-native-roots", "json", "gzip", "deflate", "socks"]
-
 [dependencies.tokio]
 version = "1"
 default-features = false
