@@ -5,9 +5,9 @@ use std::{
 
 use anyhow::{Context, Result};
 use fancy_regex::Regex;
+use frankenstein::reqwest::{redirect, Client, ClientBuilder, Url};
 use log::error;
 use once_cell::sync::Lazy;
-use frankenstein::reqwest::{redirect, Client, ClientBuilder, Url};
 
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36";
 
@@ -27,8 +27,10 @@ static CLIENT_REDIRECT_ONCE: Lazy<Client> = Lazy::new(|| {
 });
 
 static BSHORT_REGEX: Lazy<Regex> = Lazy::new(|| {
-  Regex::new(r"((https?://|(?<![a-zA-Z])|^)?b23\.tv/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*")
-    .unwrap()
+  Regex::new(
+    r"((https?://|(?<![a-zA-Z])|^)?(b23\.tv|bili2233\.cn)/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*",
+  )
+  .unwrap()
 });
 
 static BVIDEO_REGEX: Lazy<Regex> = Lazy::new(|| {
@@ -79,8 +81,7 @@ static JD_REGEX: Lazy<Regex> = Lazy::new(|| {
 .unwrap()
 });
 static TWITTER_SHORT_REGEX: Lazy<Regex> = Lazy::new(|| {
-  Regex::new(r"((https?://|(?<![a-zA-Z])|^)t\.co/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*")
-    .unwrap()
+  Regex::new(r"((https?://|(?<![a-zA-Z])|^)t\.co/[0-9a-zA-Z]+/?)\??(?:&?[^=&]*=[^=&]*)*").unwrap()
 });
 static TIKTOK_SHARE_REGEX: Lazy<Regex> = Lazy::new(|| {
   Regex::new(
@@ -113,9 +114,7 @@ pub async fn replace_all(text: &str) -> Result<String> {
 }
 
 fn replace_twitter(url: &str) -> String {
-  TWITTER_REGEX
-    .replace(url, "https://fixupx.com$path")
-    .into()
+  TWITTER_REGEX.replace(url, "https://fixupx.com$path").into()
 }
 
 fn replace_twitter_x(url: &str) -> String {
@@ -229,7 +228,6 @@ async fn replace_bshort(str: &str) -> Result<String> {
   }
   Ok(new_str)
 }
-
 
 async fn replace_twitter_short(str: &str) -> Result<String> {
   let mut new_str = str.to_string();

@@ -16,9 +16,9 @@ opt-level = "s"
 anyhow = "1.0"
 async-stream = "0.3"
 async-trait = "0.1"
-clap = { version = "4.3", features = ["derive", "cargo", "wrap_help", "env"] }
-clap-verbosity-flag = "2.0"
-fancy-regex = "0.13"
+clap = { version = "4", features = ["derive", "cargo", "wrap_help", "env"] }
+clap-verbosity-flag = "3"
+fancy-regex = "0.14"
 form_urlencoded = "1.2"
 futures = { version = "0.3" }
 futures-util = "0.3"
@@ -42,6 +42,6 @@ features = ["all_components", "pattern_encoder"]
 
 # Telegram API
 [dependencies.frankenstein]
-version = "0.30"
+version = "0.37"
 default-features = false
 features = ["async-http-client"]

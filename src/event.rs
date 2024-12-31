@@ -159,6 +159,7 @@ impl Display for MessageType {
       UpdateContent::BusinessMessage(_) => "BusinessMessage",
       UpdateContent::EditedBusinessMessage(_) => "EditedBusinessMessage",
       UpdateContent::DeletedBusinessMessages(_) => "DeletedBusinessMessages",
+      UpdateContent::PurchasedPaidMedia(_) => "PurchasedPaidMedia",
     };
     f.write_str(str)
   }

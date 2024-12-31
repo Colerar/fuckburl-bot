@@ -1,13 +1,13 @@
 mod event;
 mod replacer;
 
+use frankenstein::reqwest::{Client, Proxy};
 use log::{debug, info, LevelFilter};
 use log4rs::{
   append::console::ConsoleAppender,
   config::{Appender, Root},
   encode::pattern::PatternEncoder,
 };
-use frankenstein::reqwest::{Client, Proxy};
 use serde::Deserialize;
 
 use std::{
@@ -21,7 +21,7 @@ use std::{
 
 use anyhow::{bail, Context, Result};
 use clap::{Parser, ValueHint};
-use clap_verbosity_flag::{LogLevel, Verbosity};
+use clap_verbosity_flag::{LogLevel, Verbosity, VerbosityFilter};
 use frankenstein::{AllowedUpdate, AsyncApi, AsyncTelegramApi, GetUpdatesParams};
 
 use crate::event::process_update;
@@ -113,17 +113,18 @@ async fn main() -> Result<()> {
       .context("Failed to get username for bot, maybe token is invalid")?
   );
 
-  let update_params_builder = GetUpdatesParams::builder().allowed_updates([AllowedUpdate::Message]);
-  let mut update_params = update_params_builder.clone().build();
+  let mut update_params = GetUpdatesParams::builder()
+    .allowed_updates(vec![AllowedUpdate::Message])
+    .build();
 
   loop {
     let result = tg_api.get_updates(&update_params).await;
     match result {
       Ok(response) => {
         if let Some(last) = response.result.last() {
-          update_params = update_params_builder
-            .clone()
-            .offset(last.update_id + 1)
+          update_params = GetUpdatesParams::builder()
+            .allowed_updates(vec![AllowedUpdate::Message])
+            .offset(last.update_id as i64 + 1)
             .build();
         }
 
@@ -158,8 +159,8 @@ type DefaultLevel = clap_verbosity_flag::InfoLevel;
 pub struct DebugLevel;
 
 impl LogLevel for DebugLevel {
-  fn default() -> Option<log::Level> {
-    Some(log::Level::Debug)
+  fn default_filter() -> VerbosityFilter {
+    VerbosityFilter::Debug
   }
 }
 
