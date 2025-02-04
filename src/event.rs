@@ -2,12 +2,16 @@ use std::{fmt::Display, sync::Arc};
 
 use anyhow::{Context, Ok, Result};
 use frankenstein::{
-  AsyncApi, AsyncTelegramApi, DeleteMessageParams, MessageOrigin, ParseMode, ReplyParameters,
-  SendMessageParams, Update, UpdateContent, User,
+  AsyncApi, AsyncTelegramApi, DeleteMessageParams, FileUpload, GetFileParams, InputFile,
+  MessageOrigin, ParseMode, PhotoSize, ReplyParameters, SendMessageParams, SendPhotoParams, Update,
+  UpdateContent, User,
 };
 use log::{debug, info};
 
-use crate::{replacer::replace_all, start_time, Config};
+use crate::{
+  replacer::{replace_all, replace_qrcode},
+  start_time, Config,
+};
 use std::fmt::Write;
 
 fn write_user(text: &mut String, user: &User) {
@@ -50,18 +54,30 @@ pub(crate) async fn process_update(
 
   debug!("Message id: {}/{}", msg.chat.id, msg.message_id);
 
-  let text = if let Some(text) = msg.text.clone() {
-    text
-  } else {
-    return Ok(());
-  };
+  let mut replaced_image: Option<(tempfile::NamedTempFile, Vec<String>)> = None;
 
-  if text.contains("@ignoreme") {
-    return Ok(());
+  if let Some(photos) = msg.photo {
+    let photo_meta = photos.iter().max_by(|a, b| a.file_size.cmp(&b.file_size));
+    if let Some(photo_meta) = photo_meta {
+      replaced_image = try_replace_photo(api, config.clone(), photo_meta).await?;
+    }
   }
 
-  let replaced = replace_all(&text).await.context("Failed to replace text")?;
-  if replaced == text {
+  let changed_text = if let Some(text) = msg.text.clone() {
+    if text.contains("@ignoreme") {
+      return Ok(());
+    }
+    let replaced = replace_all(&text).await.context("Failed to replace text")?;
+    if replaced != text {
+      Some(replaced)
+    } else {
+      None
+    }
+  } else {
+    None
+  };
+
+  if changed_text.is_none() && replaced_image.is_none() {
     return Ok(());
   }
 
@@ -78,7 +94,21 @@ pub(crate) async fn process_update(
 
   writeln!(text, ":\n").unwrap();
 
-  text.push_str(&v_htmlescape::escape(&replaced).to_string());
+  if let Some(changed_text) = changed_text {
+    text.push_str(&v_htmlescape::escape(&changed_text).to_string());
+  }
+
+  if let Some((_, ref urls)) = replaced_image {
+    if !urls.is_empty() {
+      text.push_str("\n<i>URLs:</i>");
+    }
+    for url in urls {
+      text.push_str(&format!(
+        "\n<a href=\"{url}\">{}</a>",
+        v_htmlescape::escape(&url)
+      ));
+    }
+  }
 
   if let Some(reply_origin) = msg.forward_origin {
     use MessageOrigin as MO;
@@ -102,22 +132,43 @@ pub(crate) async fn process_update(
     }
   }
 
-  let mut send_msg = SendMessageParams::builder()
-    .chat_id(msg.chat.id)
-    .text(text)
-    .parse_mode(ParseMode::Html)
-    .build();
-
-  send_msg.reply_parameters = msg
+  let reply_parameters = msg
     .reply_to_message
     .map(|i| ReplyParameters::builder().message_id(i.message_id).build());
 
-  let resp = api
-    .send_message(&send_msg)
-    .await
-    .context("Failed to send message...")?;
-  debug!("{resp:?}");
+  match replaced_image {
+    Some((img, _urls)) => {
+      let mut send_msg = SendPhotoParams::builder()
+        .chat_id(msg.chat.id)
+        .photo(FileUpload::InputFile(InputFile {
+          path: img.path().to_path_buf(),
+        }))
+        .caption(text)
+        .parse_mode(ParseMode::Html)
+        .build();
+      send_msg.reply_parameters = reply_parameters;
+      let resp = api
+        .send_photo(&send_msg)
+        .await
+        .context("Failed to send photo...")?;
+      debug!("{resp:?}");
+    },
+    None => {
+      let mut send_msg = SendMessageParams::builder()
+        .chat_id(msg.chat.id)
+        .text(text)
+        .parse_mode(ParseMode::Html)
+        .build();
 
+      send_msg.reply_parameters = reply_parameters;
+
+      let resp = api
+        .send_message(&send_msg)
+        .await
+        .context("Failed to send message...")?;
+      debug!("{resp:?}");
+    },
+  }
   let resp = api
     .delete_message(
       &DeleteMessageParams::builder()
@@ -130,6 +181,46 @@ pub(crate) async fn process_update(
   debug!("{resp:?}",);
 
   Ok(())
+}
+
+async fn try_replace_photo(
+  api: &AsyncApi,
+  config: Arc<Config>,
+  meta: &PhotoSize,
+) -> Result<Option<(tempfile::NamedTempFile, Vec<String>)>> {
+  if meta.file_size.unwrap_or(u64::MAX) > 1024 * 1024 * 1 {
+    return Ok(None);
+  }
+  let resp = api
+    .get_file(
+      &GetFileParams::builder()
+        .file_id(meta.file_id.clone())
+        .build(),
+    )
+    .await
+    .context("Failed to get file")?;
+  let file_path = resp.result.file_path.context("File path is not found")?;
+  let file_url = format!(
+    "https://api.telegram.org/file/bot{}/{}",
+    config.telegram_token, file_path
+  );
+  let file_data = api
+    .client
+    .get(file_url)
+    .send()
+    .await
+    .context("Failed to get file")?;
+  let file_bytes = file_data.bytes().await.context("Failed to read file")?;
+  let image = image::load_from_memory(&file_bytes).context("Failed to load image")?;
+  let replaced = replace_qrcode(image)
+    .await
+    .context("Failed to replace qrcode")?;
+  let Some((replaced, urls)) = replaced else {
+    return Ok(None);
+  };
+  let file = tempfile::NamedTempFile::new()?;
+  replaced.save_with_format(file.path(), image::ImageFormat::Png)?;
+  Ok(Some((file, urls)))
 }
 
 struct MessageType(UpdateContent);

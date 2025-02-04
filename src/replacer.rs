@@ -1,13 +1,16 @@
 use std::{
   borrow::{Borrow, Cow},
+  ops::Sub,
   str::FromStr,
 };
 
 use anyhow::{Context, Result};
 use fancy_regex::Regex;
 use frankenstein::reqwest::{redirect, Client, ClientBuilder, Url};
+use image::{DynamicImage, Rgba};
 use log::error;
 use once_cell::sync::Lazy;
+use qrcode::QrCode;
 
 const UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36";
 
@@ -111,6 +114,57 @@ pub async fn replace_all(text: &str) -> Result<String> {
   new = replace_weixin(&new);
   new = replace_jd(&new);
   Ok(new)
+}
+
+pub async fn replace_qrcode(
+  image: DynamicImage,
+) -> anyhow::Result<Option<(DynamicImage, Vec<String>)>> {
+  // Prepare for detection
+  let mut rqrr_detect = rqrr::PreparedImage::prepare(image.to_luma8());
+  let mut new_img = image;
+  let grids = rqrr_detect.detect_grids();
+  if grids.is_empty() {
+    return Ok(None);
+  }
+  let mut urls = Vec::new();
+  for grid in grids {
+    let (top_left, top_right, _bottom_right, bottom_left) = (
+      grid.bounds[0],
+      grid.bounds[1],
+      grid.bounds[2],
+      grid.bounds[3],
+    );
+    let width = (top_right.x - top_left.x) as i64;
+    let height = (bottom_left.y - top_left.y) as i64;
+    let (_meta, content) = grid.decode()?;
+    let replaced = replace_all(&content)
+      .await
+      .context("failed to replace all")?;
+    if replaced == content {
+      continue;
+    }
+
+    // encode the content to qrcode, and put it on the image
+    let qr = QrCode::with_error_correction_level(&replaced, qrcode::EcLevel::L)
+      .context("Failed to encode to qrcode")?;
+    let qrimg = qr
+      .render::<Rgba<u8>>()
+      .light_color(Rgba([255, 255, 255, 255]))
+      .dark_color(Rgba([0, 0, 0, 255]))
+      .quiet_zone(false)
+      .max_dimensions((width as f64 * 1.1) as u32, (height as f64 * 1.1) as u32)
+      .min_dimensions((width as f64 * 0.9) as u32, (height as f64 * 0.9) as u32)
+      .build();
+    urls.push(replaced);
+
+    image::imageops::overlay(
+      &mut new_img,
+      &qrimg,
+      top_left.x.sub(5).into(),
+      top_left.y.sub(5).into(),
+    );
+  }
+  Ok(Some((new_img, urls)))
 }
 
 fn replace_twitter(url: &str) -> String {
