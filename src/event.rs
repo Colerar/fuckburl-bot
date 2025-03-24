@@ -2,9 +2,7 @@ use std::{fmt::Display, sync::Arc};
 
 use anyhow::{Context, Ok, Result};
 use frankenstein::{
-  AsyncApi, AsyncTelegramApi, DeleteMessageParams, FileUpload, GetFileParams, InputFile,
-  MessageOrigin, ParseMode, PhotoSize, ReplyParameters, SendMessageParams, SendPhotoParams, Update,
-  UpdateContent, User,
+  client_reqwest::Bot, input_file::{FileUpload, InputFile}, methods::{DeleteMessageParams, GetFileParams, SendMessageParams, SendPhotoParams}, types::{MessageOrigin, PhotoSize, ReplyParameters, User}, updates::{Update, UpdateContent}, AsyncTelegramApi, ParseMode
 };
 use log::{debug, info};
 
@@ -31,7 +29,7 @@ fn write_user(text: &mut String, user: &User) {
 }
 
 pub(crate) async fn process_update(
-  api: &AsyncApi,
+  api: &Bot,
   config: Arc<Config>,
   update: Update,
 ) -> Result<()> {
@@ -184,7 +182,7 @@ pub(crate) async fn process_update(
 }
 
 async fn try_replace_photo(
-  api: &AsyncApi,
+  api: &Bot,
   config: Arc<Config>,
   meta: &PhotoSize,
 ) -> Result<Option<(tempfile::NamedTempFile, Vec<String>)>> {

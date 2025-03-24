@@ -1,7 +1,7 @@
 mod event;
 mod replacer;
 
-use frankenstein::reqwest::{Client, Proxy};
+use frankenstein::{client_reqwest::Bot, methods::GetUpdatesParams, reqwest::{Client, Proxy}, types::AllowedUpdate, AsyncTelegramApi};
 use log::{debug, info, LevelFilter};
 use log4rs::{
   append::console::ConsoleAppender,
@@ -22,7 +22,6 @@ use std::{
 use anyhow::{bail, Context, Result};
 use clap::{Parser, ValueHint};
 use clap_verbosity_flag::{LogLevel, Verbosity, VerbosityFilter};
-use frankenstein::{AllowedUpdate, AsyncApi, AsyncTelegramApi, GetUpdatesParams};
 
 use crate::event::process_update;
 
@@ -93,7 +92,7 @@ async fn main() -> Result<()> {
   }
   let cli = cli.build()?;
 
-  let tg_api = AsyncApi::builder()
+  let tg_api = Bot::builder()
     .api_url(format!(
       "{}{}",
       frankenstein::BASE_API_URL,
