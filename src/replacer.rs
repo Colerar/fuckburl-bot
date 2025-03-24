@@ -127,6 +127,7 @@ pub async fn replace_qrcode(
     return Ok(None);
   }
   let mut urls = Vec::new();
+  let mut replaced_cnt = 0;
   for grid in grids {
     let (top_left, top_right, _bottom_right, bottom_left) = (
       grid.bounds[0],
@@ -163,6 +164,10 @@ pub async fn replace_qrcode(
       top_left.x.sub(5).into(),
       top_left.y.sub(5).into(),
     );
+    replaced_cnt += 1;
+  }
+  if replaced_cnt == 0 {
+    return Ok(None);
   }
   Ok(Some((new_img, urls)))
 }
