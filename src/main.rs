@@ -1,7 +1,13 @@
 mod event;
 mod replacer;
 
-use frankenstein::{client_reqwest::Bot, methods::GetUpdatesParams, reqwest::{Client, Proxy}, types::AllowedUpdate, AsyncTelegramApi};
+use frankenstein::{
+  client_reqwest::Bot,
+  methods::GetUpdatesParams,
+  reqwest::{Client, Proxy},
+  types::AllowedUpdate,
+  AsyncTelegramApi,
+};
 use log::{debug, info, LevelFilter};
 use log4rs::{
   append::console::ConsoleAppender,
@@ -24,6 +30,10 @@ use clap::{Parser, ValueHint};
 use clap_verbosity_flag::{LogLevel, Verbosity, VerbosityFilter};
 
 use crate::event::process_update;
+
+const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(90);
+const GET_UPDATES_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Parser, Debug)]
 struct Cli {
@@ -84,7 +94,9 @@ async fn main() -> Result<()> {
   let config = Arc::new(config);
   debug!("{config:?}");
 
-  let mut cli = Client::builder();
+  let mut cli = Client::builder()
+    .connect_timeout(HTTP_CONNECT_TIMEOUT)
+    .timeout(HTTP_REQUEST_TIMEOUT);
   if let Some(proxy) = &config.proxy {
     let proxy =
       Proxy::all(proxy.clone()).with_context(|| format!("Failed to set \"{proxy}\" as proxy"))?;
@@ -117,7 +129,17 @@ async fn main() -> Result<()> {
     .build();
 
   loop {
-    let result = tg_api.get_updates(&update_params).await;
+    let result =
+      match tokio::time::timeout(GET_UPDATES_TIMEOUT, tg_api.get_updates(&update_params)).await {
+        Ok(result) => result,
+        Err(error) => {
+          log::error!(
+            "Timed out waiting for Telegram updates after {GET_UPDATES_TIMEOUT:?}: {error}"
+          );
+          tokio::time::sleep(Duration::from_millis(config.time.failed_delay)).await;
+          continue;
+        },
+      };
     match result {
       Ok(response) => {
         if let Some(last) = response.result.last() {
