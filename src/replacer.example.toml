@@ -1,0 +1,78 @@
+# Replacer rules: exact hosts, then the first matching path in file order.
+# Changes are hot-reloaded after validation. Use rules = [] to disable.
+# Paths support {name} captures, * (one segment), and ** (zero or more segments).
+# keep-query omitted: leave query unchanged; []: remove every query parameter.
+
+[[rules]]
+hosts = ["b23.tv", "bili2233.cn", "t.co"]
+resolve-redirect = true
+
+[[rules]]
+hosts = ["vm.tiktok.com", "vt.tiktok.com"]
+resolve-redirect = true
+keep-query = []
+
+[[rules]]
+hosts = ["www.tiktok.com"]
+path = "/t/{code}"
+resolve-redirect = true
+keep-query = []
+
+[[rules]]
+hosts = ["www.tiktok.com"]
+path = "/{code}"
+resolve-redirect = true
+keep-query = []
+
+[[rules]]
+hosts = ["bilibili.com", "www.bilibili.com"]
+path = "/video/{id}"
+keep-query = ["p", "t"]
+
+[[rules]]
+hosts = ["bilibili.com", "www.bilibili.com"]
+path = "/read/mobile/{id}"
+rewrite-scheme = "https"
+rewrite-host = "www.bilibili.com"
+rewrite-path = "/read/cv{id}"
+keep-query = []
+
+[[rules]]
+hosts = ["bilibili.com", "www.bilibili.com", "m.bilibili.com"]
+path = "/opus/{id}"
+rewrite-scheme = "https"
+rewrite-host = "t.bilibili.com"
+rewrite-path = "/{id}"
+keep-query = []
+
+[[rules]]
+hosts = ["youtube.com", "www.youtube.com", "youtu.be"]
+keep-query = ["v", "list", "index", "t"]
+
+[[rules]]
+hosts = ["twitter.com", "www.twitter.com", "vxtwitter.com", "c.vxtwitter.com", "x.com", "www.x.com", "fixupx.com", "www.fixupx.com"]
+path = "/{user}/status/{id}"
+rewrite-scheme = "https"
+rewrite-host = "fixupx.com"
+keep-query = []
+
+[[rules]]
+hosts = ["amazon.com", "www.amazon.com", "amazon.co", "www.amazon.co", "amazon.co.jp", "www.amazon.co.jp", "amazon.co.uk", "www.amazon.co.uk"]
+path = "/**/dp/{id}/**"
+rewrite-path = "/dp/{id}/"
+keep-query = []
+
+[[rules]]
+hosts = ["amazon.com", "www.amazon.com", "amazon.co", "www.amazon.co", "amazon.co.jp", "www.amazon.co.jp", "amazon.co.uk", "www.amazon.co.uk"]
+path = "/s"
+keep-query = ["k"]
+
+[[rules]]
+hosts = ["mp.weixin.qq.com"]
+path = "/s"
+keep-query = ["__biz", "mid", "idx", "sn"]
+
+[[rules]]
+hosts = ["item.jd.com", "item.m.jd.com"]
+path = "/product/{id}"
+keep-query = []

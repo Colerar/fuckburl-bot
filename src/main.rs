@@ -1,86 +1,45 @@
+mod config;
 mod event;
 mod replacer;
 
-use frankenstein::{
-  client_reqwest::Bot,
-  methods::GetUpdatesParams,
-  reqwest::{Client, Proxy},
-  types::AllowedUpdate,
-  AsyncTelegramApi,
+use std::{
+  path::PathBuf,
+  sync::{Arc, OnceLock},
+  time::{Duration, SystemTime, UNIX_EPOCH},
 };
+
+use anyhow::{Context, Result};
+use clap::{Parser, ValueHint};
+use clap_verbosity_flag::{LogLevel, Verbosity, VerbosityFilter};
+use frankenstein::{methods::GetUpdatesParams, types::AllowedUpdate, AsyncTelegramApi};
 use log::{debug, info, LevelFilter};
 use log4rs::{
   append::console::ConsoleAppender,
   config::{Appender, Root},
   encode::pattern::PatternEncoder,
 };
-use serde::Deserialize;
 
-use std::{
-  fs::{self, File},
-  io::{BufReader, BufWriter, Read, Write},
-  path::PathBuf,
-  process,
-  sync::{Arc, OnceLock},
-  time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use crate::{config::ConfigWatcher, event::process_update};
 
-use anyhow::{bail, Context, Result};
-use clap::{Parser, ValueHint};
-use clap_verbosity_flag::{LogLevel, Verbosity, VerbosityFilter};
-
-use crate::event::process_update;
-
-const HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(90);
 const GET_UPDATES_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Parser, Debug)]
 struct Cli {
-  #[arg(short = 'c', long, value_name = "DIR")]
+  #[arg(short = 'c', long, value_name = "FILE")]
   #[arg(value_hint = ValueHint::FilePath)]
   config_file: Option<PathBuf>,
   #[clap(flatten)]
   verbose: Verbosity<DefaultLevel>,
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(rename_all(deserialize = "kebab-case"))]
-struct Config {
-  telegram_token: String,
-  #[serde(default = "Default::default")]
-  enabled_chats: Vec<String>,
-  proxy: Option<String>,
-  #[serde(default = "Default::default")]
-  time: Time,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all(deserialize = "kebab-case"))]
-struct Time {
-  #[allow(dead_code)]
-  fetch_delay: u64,
-  failed_delay: u64,
-}
-
-impl Default for Time {
-  fn default() -> Self {
-    Self {
-      fetch_delay: 1000,
-      failed_delay: 5000,
-    }
-  }
-}
-
 static START_TIME: OnceLock<u64> = OnceLock::new();
 
 fn start_time() -> u64 {
   *START_TIME.get_or_init(|| {
-    let start = SystemTime::now();
-    let since_the_epoch = start
+    SystemTime::now()
       .duration_since(UNIX_EPOCH)
-      .expect("Time went backwards");
-    since_the_epoch.as_secs()
+      .expect("Time went backwards")
+      .as_secs()
   })
 }
 
@@ -90,82 +49,89 @@ async fn main() -> Result<()> {
   init_logger(args.verbose.log_level_filter());
   info!("Start at: {:?}", start_time());
   debug!("{args:?}");
-  let config = init_config(args.config_file).context("Failed to init config file")?;
-  let config = Arc::new(config);
-  debug!("{config:?}");
-
-  let mut cli = Client::builder()
-    .connect_timeout(HTTP_CONNECT_TIMEOUT)
-    .timeout(HTTP_REQUEST_TIMEOUT);
-  if let Some(proxy) = &config.proxy {
-    let proxy =
-      Proxy::all(proxy.clone()).with_context(|| format!("Failed to set \"{proxy}\" as proxy"))?;
-    cli = cli.proxy(proxy);
+  let path = config::config_path(args.config_file)?;
+  if config::initialize(&path).context("Failed to initialize configuration files")? {
+    info!("Please configure the bot, then run it again.");
+    return Ok(());
   }
-  let cli = cli.build()?;
-
-  let tg_api = Bot::builder()
-    .api_url(format!(
-      "{}{}",
-      frankenstein::BASE_API_URL,
-      &*config.telegram_token,
-    ))
-    .client(cli.clone())
-    .build();
-  let tg_api = Arc::new(tg_api);
-  let me = tg_api
+  let mut watcher = ConfigWatcher::start(path).context("Failed to load configuration")?;
+  let initial = Arc::clone(&watcher.updates.borrow());
+  let me = initial
+    .api
     .get_me()
     .await
-    .context("Failed to get telegram bot self info")?;
+    .context("Failed to get Telegram bot self info")?;
   info!(
     "Current tg bot: {}",
     me.result
       .username
-      .context("Failed to get username for bot, maybe token is invalid")?
+      .context("Failed to get bot username; check the token")?
   );
 
+  let mut token = initial.config.telegram_token.clone();
+  drop(initial);
   let mut update_params = GetUpdatesParams::builder()
     .allowed_updates(vec![AllowedUpdate::Message])
     .build();
 
   loop {
-    let result =
-      match tokio::time::timeout(GET_UPDATES_TIMEOUT, tg_api.get_updates(&update_params)).await {
-        Ok(result) => result,
-        Err(error) => {
-          log::error!(
-            "Timed out waiting for Telegram updates after {GET_UPDATES_TIMEOUT:?}: {error}"
-          );
-          tokio::time::sleep(Duration::from_millis(config.time.failed_delay)).await;
-          continue;
-        },
-      };
-    match result {
-      Ok(response) => {
+    let runtime = Arc::clone(&watcher.updates.borrow_and_update());
+    if runtime.config.telegram_token != token {
+      // Offsets belong to the bot account and cannot be reused for a new token.
+      update_params = GetUpdatesParams::builder()
+        .allowed_updates(vec![AllowedUpdate::Message])
+        .build();
+      token.clone_from(&runtime.config.telegram_token);
+    }
+    // Reloads cancel an outstanding long poll, so new clients and chat filters
+    // take effect promptly rather than waiting for the request timeout.
+    let result = tokio::select! {
+      changed = watcher.updates.changed() => {
+        changed.context("Configuration watcher stopped")?;
+        continue;
+      },
+      result = tokio::time::timeout(GET_UPDATES_TIMEOUT, runtime.api.get_updates(&update_params)) => result,
+    };
+    let delay = match result {
+      Ok(Ok(response)) => {
         if let Some(last) = response.result.last() {
           update_params = GetUpdatesParams::builder()
             .allowed_updates(vec![AllowedUpdate::Message])
             .offset(last.update_id as i64 + 1)
             .build();
         }
-
         for update in response.result {
-          let api = Arc::clone(&tg_api);
-          let config = Arc::clone(&config);
+          // Keep one immutable snapshot throughout photo and text processing.
+          let runtime = Arc::clone(&runtime);
           tokio::spawn(async move {
-            let result = process_update(&api, config, update)
-              .await
-              .with_context(|| "Failed to process update".to_string());
-            if let Err(err) = result {
-              log::error!("{err:?}");
+            if let Err(error) = process_update(
+              &runtime.api,
+              Arc::clone(&runtime.config),
+              &runtime.replacer,
+              update,
+            )
+            .await
+            {
+              log::error!("Failed to process update: {error:#}");
             }
           });
         }
+        runtime.config.time.fetch_delay
+      },
+      Ok(Err(error)) => {
+        log::error!("Failed to get updates: {error:?}");
+        runtime.config.time.failed_delay
       },
       Err(error) => {
-        log::error!("Failed to get updates: {error:?}");
-        tokio::time::sleep(Duration::from_millis(config.time.failed_delay)).await;
+        log::error!(
+          "Timed out waiting for Telegram updates after {GET_UPDATES_TIMEOUT:?}: {error}"
+        );
+        runtime.config.time.failed_delay
       },
+    };
+    tokio::select! {
+      changed = watcher.updates.changed() => { changed.context("Configuration watcher stopped")?; },
+      _ = tokio::time::sleep(Duration::from_millis(delay)) => {},
     }
   }
 }
@@ -195,66 +161,4 @@ fn init_logger(verbosity: LevelFilter) {
     .build(Root::builder().appender("stdout").build(verbosity))
     .unwrap();
   log4rs::init_config(config).unwrap();
-}
-
-fn init_config(path: Option<PathBuf>) -> Result<Config> {
-  let path = if let Some(dir) = path {
-    dir
-  } else if cfg!(debug_assertions) {
-    std::env::current_dir()
-      .context("Failed to get current dir")?
-      .join("work_dir")
-      .join("config.toml")
-  } else {
-    std::env::current_dir()
-      .context("Failed to get current dir")?
-      .join("config.toml")
-  };
-
-  info!("Initializing config file...");
-
-  if path.exists() && path.is_file() {
-    info!("Reading config from {}...", &path.to_string_lossy());
-    let file = File::open(&path).context("Failed to")?;
-    let mut buf_reader = BufReader::new(file);
-    let mut config_str = String::new();
-    buf_reader
-      .read_to_string(&mut config_str)
-      .with_context(|| {
-        format!(
-          "Failed to read config file as String: {}",
-          &path.to_string_lossy()
-        )
-      })?;
-    let config: Config = toml::from_str(&config_str)
-      .with_context(|| format!("Failed to parse config file: {}", &path.to_string_lossy()))?;
-    Ok(config)
-  } else if !path.exists() {
-    if let Some(parent) = path.parent() {
-      fs::create_dir_all(parent)
-        .with_context(|| format!("Failed to create folder: {}", parent.to_string_lossy()))?;
-    };
-    let config = File::create(&path).with_context(|| {
-      format!(
-        "Failed to create default config: {}",
-        &path.to_string_lossy()
-      )
-    })?;
-    const DEFAULT_CONFIG: &[u8] = include_bytes!("config.example.toml");
-
-    {
-      let mut buf_writer = BufWriter::new(config);
-      buf_writer.write_all(DEFAULT_CONFIG).with_context(|| {
-        format!(
-          "Failed to write default config to: {}",
-          &path.to_string_lossy()
-        )
-      })?;
-    }
-    info!("Default config writed to {}", &path.to_string_lossy());
-    info!("Please take a look and configure bot, exiting...");
-    process::exit(0)
-  } else {
-    bail!("Path is not a file: {}", path.to_string_lossy())
-  }
 }

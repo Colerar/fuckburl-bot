@@ -2,14 +2,16 @@ use std::{fmt::Display, sync::Arc};
 
 use anyhow::{Context, Ok, Result};
 use frankenstein::{
-  client_reqwest::Bot, input_file::{FileUpload, InputFile}, methods::{DeleteMessageParams, GetFileParams, SendMessageParams, SendPhotoParams}, types::{MessageOrigin, PhotoSize, ReplyParameters, User}, updates::{Update, UpdateContent}, AsyncTelegramApi, ParseMode
+  client_reqwest::Bot,
+  input_file::{FileUpload, InputFile},
+  methods::{DeleteMessageParams, GetFileParams, SendMessageParams, SendPhotoParams},
+  types::{MessageOrigin, PhotoSize, ReplyParameters, User},
+  updates::{Update, UpdateContent},
+  AsyncTelegramApi, ParseMode,
 };
 use log::{debug, info};
 
-use crate::{
-  replacer::{replace_all, replace_qrcode},
-  start_time, Config,
-};
+use crate::{config::Config, replacer::Replacer, start_time};
 use std::fmt::Write;
 
 fn write_user(text: &mut String, user: &User) {
@@ -19,9 +21,9 @@ fn write_user(text: &mut String, user: &User) {
     },
     None => {
       write!(text, r#"<a href="tg://user?id={}">"#, user.id).unwrap();
-      text.push_str(&v_htmlescape::escape(&user.first_name).to_string());
+      v_htmlescape::escape_string(&user.first_name, text);
       if let Some(ref last) = user.last_name {
-        write!(text, " {}", v_htmlescape::escape(last)).unwrap();
+        write!(text, " {}", v_htmlescape::escape_fmt(last)).unwrap();
       }
       text.push_str("</a>");
     },
@@ -31,6 +33,7 @@ fn write_user(text: &mut String, user: &User) {
 pub(crate) async fn process_update(
   api: &Bot,
   config: Arc<Config>,
+  replacer: &Replacer,
   update: Update,
 ) -> Result<()> {
   let UpdateContent::Message(msg) = update.content else {
@@ -57,7 +60,7 @@ pub(crate) async fn process_update(
   if let Some(photos) = msg.photo {
     let photo_meta = photos.iter().max_by(|a, b| a.file_size.cmp(&b.file_size));
     if let Some(photo_meta) = photo_meta {
-      replaced_image = try_replace_photo(api, config.clone(), photo_meta).await?;
+      replaced_image = try_replace_photo(api, config.clone(), replacer, photo_meta).await?;
     }
   }
 
@@ -65,7 +68,10 @@ pub(crate) async fn process_update(
     if text.contains("@ignoreme") {
       return Ok(());
     }
-    let replaced = replace_all(&text).await.context("Failed to replace text")?;
+    let replaced = replacer
+      .replace_all(&text)
+      .await
+      .context("Failed to replace text")?;
     if replaced != text {
       Some(replaced)
     } else {
@@ -93,7 +99,7 @@ pub(crate) async fn process_update(
   writeln!(text, ":\n").unwrap();
 
   if let Some(changed_text) = changed_text {
-    text.push_str(&v_htmlescape::escape(&changed_text).to_string());
+    v_htmlescape::escape_string(&changed_text, &mut text);
   }
 
   if let Some((_, ref urls)) = replaced_image {
@@ -103,7 +109,7 @@ pub(crate) async fn process_update(
     for url in urls {
       text.push_str(&format!(
         "\n<a href=\"{url}\">{}</a>",
-        v_htmlescape::escape(&url)
+        v_htmlescape::escape_fmt(url)
       ));
     }
   }
@@ -118,7 +124,7 @@ pub(crate) async fn process_update(
       },
       MO::HiddenUser(user) => {
         text.push_str("\n\n<i>forwarded from ");
-        text.push_str(&v_htmlescape::escape(&user.sender_user_name).to_string());
+        v_htmlescape::escape_string(&user.sender_user_name, &mut text);
         text.push_str("</i>");
       },
       MO::Chat(_chat) => {
@@ -184,9 +190,10 @@ pub(crate) async fn process_update(
 async fn try_replace_photo(
   api: &Bot,
   config: Arc<Config>,
+  replacer: &Replacer,
   meta: &PhotoSize,
 ) -> Result<Option<(tempfile::NamedTempFile, Vec<String>)>> {
-  if meta.file_size.unwrap_or(u64::MAX) > 1024 * 1024 * 1 {
+  if meta.file_size.unwrap_or(u64::MAX) > 1024 * 1024 {
     return Ok(None);
   }
   let resp = api
@@ -210,7 +217,8 @@ async fn try_replace_photo(
     .context("Failed to get file")?;
   let file_bytes = file_data.bytes().await.context("Failed to read file")?;
   let image = image::load_from_memory(&file_bytes).context("Failed to load image")?;
-  let replaced = replace_qrcode(image)
+  let replaced = replacer
+    .replace_qrcode(image)
     .await
     .context("Failed to replace qrcode")?;
   let Some((replaced, urls)) = replaced else {
@@ -249,7 +257,53 @@ impl Display for MessageType {
       UpdateContent::EditedBusinessMessage(_) => "EditedBusinessMessage",
       UpdateContent::DeletedBusinessMessages(_) => "DeletedBusinessMessages",
       UpdateContent::PurchasedPaidMedia(_) => "PurchasedPaidMedia",
+      UpdateContent::GuestMessage(_) => "GuestMessage",
+      UpdateContent::ManagedBot(_) => "ManagedBot",
+      UpdateContent::Subscription(_) => "Subscription",
+      UpdateContent::StoppedMessageGeneration(_) => "StoppedMessageGeneration",
     };
     f.write_str(str)
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use googletest::{assert_that, matchers::eq};
+  use rstest::rstest;
+
+  use super::{write_user, User};
+
+  #[rstest]
+  #[case::name_only("小明", None, None, "Send by <a href=\"tg://user?id=42\">小明</a>")]
+  #[case::escaped_names(
+    "小明<&\"",
+    Some("O'Neil/😺>"),
+    None,
+    "Send by <a href=\"tg://user?id=42\">小明&lt;&amp;&quot; O&#x27;Neil&#x2f;😺&gt;</a>"
+  )]
+  #[case::username(
+    "小明<&\"",
+    Some("Last"),
+    Some("example_user"),
+    "Send by @example_user"
+  )]
+  fn user_mentions_append_escaped_html(
+    #[case] first_name: &str,
+    #[case] last_name: Option<&str>,
+    #[case] username: Option<&str>,
+    #[case] expected: &str,
+  ) {
+    let mut user = User::builder()
+      .id(42)
+      .is_bot(false)
+      .first_name(first_name)
+      .build();
+    user.last_name = last_name.map(str::to_owned);
+    user.username = username.map(str::to_owned);
+    let mut text = String::from("Send by ");
+
+    write_user(&mut text, &user);
+
+    assert_that!(text, eq(expected));
   }
 }
